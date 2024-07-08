@@ -1,13 +1,81 @@
 import sys
 import os
+import shutil
 from csplitb import CSplitB
-import ffmpeg
+from ffmpeg import FFmpeg, Progress
 import exiftool
 import cv2
 import numpy as np
 import pickle
 import json
 from enum import IntEnum
+
+##### options
+
+create_png_16bit_linear=True
+create_png_16bit_celcius=False
+create_png_8bit=False
+create_mp4=True
+create_gradientbox=True
+create_colormap_examples=True
+
+targetcolormap = cv2.COLORMAP_TURBO
+
+delete_intermediates=True
+delete_png_16bit_raw=True
+delete_png_8bit=True
+
+#####
+
+create_png_8bit = create_png_8bit or create_mp4 # required by mp4
+create_png_16bit_linear=create_png_16bit_linear or create_png_8bit # required by 8bit
+
+colormaps = [
+	cv2.COLORMAP_AUTUMN,
+	cv2.COLORMAP_BONE,
+	cv2.COLORMAP_JET,
+	cv2.COLORMAP_WINTER,
+	cv2.COLORMAP_RAINBOW,
+	cv2.COLORMAP_OCEAN,
+	cv2.COLORMAP_SUMMER,
+	cv2.COLORMAP_SPRING,
+	cv2.COLORMAP_COOL,
+	cv2.COLORMAP_HSV,
+	cv2.COLORMAP_PINK,
+	cv2.COLORMAP_HOT,
+	cv2.COLORMAP_PARULA,
+	cv2.COLORMAP_MAGMA,
+	cv2.COLORMAP_INFERNO,
+	cv2.COLORMAP_PLASMA,
+	cv2.COLORMAP_VIRIDIS,
+	cv2.COLORMAP_CIVIDIS,
+	cv2.COLORMAP_TWILIGHT,
+	cv2.COLORMAP_TWILIGHT_SHIFTED,
+	cv2.COLORMAP_TURBO,
+]
+
+class Colormaps(IntEnum):
+	COLORMAP_AUTUMN = 0
+	COLORMAP_BONE = 1
+	COLORMAP_CIVIDIS = 17
+	COLORMAP_COOL = 8
+	COLORMAP_HOT = 11
+	COLORMAP_HSV = 9
+	COLORMAP_INFERNO = 14
+	COLORMAP_JET = 2
+	COLORMAP_MAGMA = 13
+	COLORMAP_OCEAN = 5
+	COLORMAP_PARULA = 12
+	COLORMAP_PINK = 10
+	COLORMAP_PLASMA = 15
+	COLORMAP_RAINBOW = 4
+	COLORMAP_SPRING = 7
+	COLORMAP_SUMMER = 6
+	COLORMAP_TURBO = 20
+	COLORMAP_TWILIGHT = 18
+	COLORMAP_TWILIGHT_SHIFTED = 19
+	COLORMAP_VIRIDIS = 16
+	COLORMAP_WINTER = 3
 
 # https://www.eevblog.com/forum/thermal-imaging/csq-file-format/
 
@@ -55,54 +123,6 @@ def gradientbox(width,height,minval,maxval):
 		cv2.line(img, (0, y) ,(width, y), float(height-y)/float(height)*(maxval-minval)+minval )
 	return img
 
-class Colormaps(IntEnum):
-	COLORMAP_AUTUMN = 0
-	COLORMAP_BONE = 1
-	COLORMAP_CIVIDIS = 17
-	COLORMAP_COOL = 8
-	COLORMAP_HOT = 11
-	COLORMAP_HSV = 9
-	COLORMAP_INFERNO = 14
-	COLORMAP_JET = 2
-	COLORMAP_MAGMA = 13
-	COLORMAP_OCEAN = 5
-	COLORMAP_PARULA = 12
-	COLORMAP_PINK = 10
-	COLORMAP_PLASMA = 15
-	COLORMAP_RAINBOW = 4
-	COLORMAP_SPRING = 7
-	COLORMAP_SUMMER = 6
-	COLORMAP_TURBO = 20
-	COLORMAP_TWILIGHT = 18
-	COLORMAP_TWILIGHT_SHIFTED = 19
-	COLORMAP_VIRIDIS = 16
-	COLORMAP_WINTER = 3
-
-colormaps = [
-	cv2.COLORMAP_AUTUMN,
-	cv2.COLORMAP_BONE,
-	cv2.COLORMAP_JET,
-	cv2.COLORMAP_WINTER,
-	cv2.COLORMAP_RAINBOW,
-	cv2.COLORMAP_OCEAN,
-	cv2.COLORMAP_SUMMER,
-	cv2.COLORMAP_SPRING,
-	cv2.COLORMAP_COOL,
-	cv2.COLORMAP_HSV,
-	cv2.COLORMAP_PINK,
-	cv2.COLORMAP_HOT,
-	cv2.COLORMAP_PARULA,
-	cv2.COLORMAP_MAGMA,
-	cv2.COLORMAP_INFERNO,
-	cv2.COLORMAP_PLASMA,
-	cv2.COLORMAP_VIRIDIS,
-	cv2.COLORMAP_CIVIDIS,
-	cv2.COLORMAP_TWILIGHT,
-	cv2.COLORMAP_TWILIGHT_SHIFTED,
-	cv2.COLORMAP_TURBO,
-]
-
-targetcolormap = cv2.COLORMAP_TURBO
 
 filelist = sorted([x for x in os.listdir(".") if x.lower().endswith('.csq') and not os.path.isdir(x)])
 for file in filelist:
@@ -110,58 +130,44 @@ for file in filelist:
 	
 	if not os.path.isdir(name):
 		os.mkdir(name)
-	if not os.path.isdir(name + "\\fff"):
-		os.mkdir(name + "\\fff")
-	if not os.path.isdir(name + "\\jpgls"):
-		os.mkdir(name + "\\jpgls")
-	if not os.path.isdir(name + "\\png16"):
-		os.mkdir(name + "\\png16")
-	if not os.path.isdir(name + "\\png16-celsius"):
-		os.mkdir(name + "\\png16-celsius")
-	if not os.path.isdir(name + "\\png8"):
-		os.mkdir(name + "\\png8")
 	
 	print(" " + file + "... .  .   .")
 	print("  fff... .  .   .")
-	if os.path.isfile(name + "\\fff\\" + name + "_000001.fff"):
+	if not os.path.isdir(name + "\\fff"):
+		os.mkdir(name + "\\fff")
+	if os.path.isfile(name + "\\fff\\" + name + "_000000.fff") or os.path.isfile(name + "\\png16-raw\\" + name + "_000001.png") or os.path.isfile(name + "\\png16-linear\\" + name + "_000001.png"): # fff are 0-indexed
 		print("   exists..")
 	else:
 		csplitb = CSplitB("46464600525450", file, 6, name + "\\fff\\" + name + "_", '.fff')
 		csplitb.run()
-	
-	print("  jpegls... .  .   .")
-	if os.path.isfile(name + "\\jpgls\\" + name + "_000001.jpgls"):
+
+	print("  exif... .  .   .")
+	if os.path.isfile(name + "\\exif.json"):
 		print("   exists..")
 		with open(name + "\\exif.json", 'r') as handle:
 			exifdata = json.load(handle)
-
-			PlanckR1 = exifdata['PlanckR1']
-			PlanckR2 = exifdata['PlanckR2']
-			PlanckB = exifdata['PlanckB']
-			PlanckO = exifdata['PlanckO']
-			PlanckF = exifdata['PlanckF']
 	else:
 		with exiftool.ExifTool() as et:
 			# et.run()
 			ett = et.execute(
-				name + "\\fff\\" + name + "_000001.fff"
+				name + "\\fff\\" + name + "_000000.fff"  # fff are 0-indexed
 			)
-			#print(et.last_stdout)
-			exifstring=et.last_stdout # straight text
-			exiflines=exifstring.strip().split('\n') # in lines
-			exifdata=dict()
+			# print(et.last_stdout)
+			exifstring = et.last_stdout  # straight text
+			exiflines = exifstring.strip().split('\n')  # in lines
+			exifdata = dict()
 			for exifline in exiflines:
-				exifheader=exifline[:exifline.index(':')].strip() # dirty header
-				exifvalue=exifline[exifline.index(':')+1:].strip() # dirty value
+				exifheader = exifline[:exifline.index(':')].strip()  # dirty header
+				exifvalue = exifline[exifline.index(':') + 1:].strip()  # dirty value
 
 				if ']' in exifheader:
-					exifheader=exifheader[exifheader.index(']')+1:].strip() # clean header
-				exifheader=exifheader.replace(' ','')
+					exifheader = exifheader[exifheader.index(']') + 1:].strip()  # clean header
+				exifheader = exifheader.replace(' ', '')
 
 				try:
-					exifvalue=float(exifvalue) # parse number values
+					exifvalue = float(exifvalue)  # parse number values
 				except Exception:
-					pass # it's ok, turns out it was not float
+					pass  # it's ok, turns out it was not float
 
 				# if '.' in exifvalue: # parse number values
 				# 	try:
@@ -174,17 +180,26 @@ for file in filelist:
 				# 	except Exception:
 				# 		pass # it's ok, turns out it was not int
 
-				exifdata[exifheader]=exifvalue
+				exifdata[exifheader] = exifvalue
 
-			with open(name + "\\exif.json", 'w') as handle: # saving just for fun
+			with open(name + "\\exif.json", 'w') as handle:
 				json.dump(exifdata, handle, indent=4, sort_keys=True)
 
-			PlanckR1 = exifdata['PlanckR1']
-			PlanckR2 = exifdata['PlanckR2']
-			PlanckB = exifdata['PlanckB']
-			PlanckO = exifdata['PlanckO']
-			PlanckF = exifdata['PlanckF']
+	PlanckR1 = exifdata['PlanckR1']
+	PlanckR2 = exifdata['PlanckR2']
+	PlanckB = exifdata['PlanckB']
+	PlanckO = exifdata['PlanckO']
+	PlanckF = exifdata['PlanckF']
 
+	listlen = len([x for x in os.listdir(name + "\\fff") if x.lower().endswith('.fff') and not os.path.isdir(x)])
+
+	print("  jpegls... .  .   .")
+	if not os.path.isdir(name + "\\jpgls"):
+		os.mkdir(name + "\\jpgls")
+	if os.path.isfile(name + "\\jpgls\\" + name + "_000000.jpgls") or os.path.isfile(name + "\\png16-raw\\" + name + "_000001.png") or os.path.isfile(name + "\\png16-linear\\" + name + "_000001.png"): # jpgls are 0-indexed
+		print("   exists..")
+	else:
+		with exiftool.ExifTool() as et:
 			ett = et.execute(
 				"-b",
 				"-RawThermalImage",
@@ -192,41 +207,61 @@ for file in filelist:
 				"-w",
 				name + "\\jpgls\\%f.jpgls"
 			)
-			print(et.last_stderr)
-	
-	print("  png16... .  .   .")
-	if os.path.isfile(name + "\\png16\\" + name + "_000001.png"):
+			if len(et.last_stderr.strip())>0:
+				print(et.last_stderr)
+
+	if delete_intermediates:
+		shutil.rmtree(name + "\\fff")
+
+	print("  png16-raw... .  .   .")
+	if not os.path.isdir(name + "\\png16-raw"):
+		os.mkdir(name + "\\png16-raw")
+	if os.path.isfile(name + "\\png16-raw\\" + name + "_000001.png") or os.path.isfile(name + "\\png16-linear\\" + name + "_000001.png"):
 		print("   exists..")
 	else:
-		(
-			ffmpeg.input(name + "\\jpgls\\" + name + "_%06d.jpgls", f='image2')
-			.output(name + "\\png16\\" + name + "_%06d.png", pix_fmt='gray16be')
-			.run()
+		ffmpeg = (
+			FFmpeg().input(
+				name + "\\jpgls\\" + name + "_%06d.jpgls",
+				f='image2',
+				# loglevel="quiet",
+				# stats=None,
+				# hide_banner=None,
+			)
+			.output(name + "\\png16-raw\\" + name + "_%06d.png", pix_fmt='gray16be')
 		)
-	# "ffmpeg -f image2 -vcodec jpegls -i 'frame%05d.tiff' -pix_fmt gray16be -vcodec png 'file.avi'"
-	# ">ffmpeg -f image2 -vcodec jpegls -start_number 101 -i _seq%3d.jpgls output.mp4"
-	
-	pnglist = sorted([x for x in os.listdir(name + "\\png16") if x.lower().endswith('.png') and not os.path.isdir(x)])
+		@ffmpeg.on("progress")
+		def ffmpeg_progress(progress: Progress):
+			pct = round(progress.frame * 100 / listlen)
+			sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+			# print(progress)
+		ffmpeg.execute()
+		print()
+
+	if delete_intermediates:
+		shutil.rmtree(name + "\\jpgls")
+
 	
 	imgmin = None
 	imgmax = None
 	idx = 0
 	pct = -1
-	listlen = len(pnglist)
+	print("  finding min/max... .  .   .")
 	if os.path.isfile(name + "\\minmax.json"):
+		print("   exists..")
 		with open(name + "\\minmax.json", 'r') as handle:
 			[imgmin, imgmax] = json.load(handle)
 	else:
-		print("   finding min/max...")
+		pnglist = sorted([x for x in os.listdir(name + "\\png16-raw") if x.lower().endswith('.png') and not os.path.isdir(x)])
+		listlen = len(pnglist)
 		for pngidx in range(listlen):
 			pngfile = pnglist[pngidx]
 			idx += 1
 			newpct = round(idx * 100 / listlen)
 			if newpct != pct:
 				pct = newpct
-				sys.stdout.write("\r[" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+				sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
 			# print(str(pct)+"%")
-			img = cv2.imread(name + "\\png16\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
+			img = cv2.imread(name + "\\png16-raw\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
 			if imgmin is None:
 				imgmin = np.min(img)
 				imgmax = np.max(img)
@@ -238,91 +273,177 @@ for file in filelist:
 		with open(name + "\\minmax.json", 'w') as handle:
 			json.dump([float(imgmin), float(imgmax)], handle)
 
-	print("min "+ str(imgmin)+" - max "+str(imgmax))
+	print("    min "+ str(imgmin)+" - max "+str(imgmax))
 	imgCmin = raw_to_celcius(imgmin)
 	imgCmax = raw_to_celcius(imgmax)
-	print("minC "+ str(imgCmin)+" - maxC "+str(imgCmax))
+	print("    Celcius min "+ str(imgCmin)+" - max "+str(imgCmax))
 
-	print("  png16-celsius... .  .   .")
-	if os.path.isfile(name + "\\png16-celsius\\" + name + "_000001.png"):
-		print("   exists..")
-	else:
-		idx = 0
-		pct = -1
-		for pngidx in range(listlen):
-			pngfile = pnglist[pngidx]
-			idx += 1
-			newpct = round(idx * 100 / listlen)
-			if newpct != pct:
-				pct = newpct
-				sys.stdout.write("\r[" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
-			# print(str(pct)+"%")
-			img = cv2.imread(name + "\\png16\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
-			#print()
-			#print(" src = "+str(img[0][0]))
 
-			# to float celsius values
-			img=raw_to_celcius(img)
-			#print(" celcius = "+str(img[0][0]))
+	if create_png_16bit_linear:
+		print("  png16-linear... .  .   .")
+		if not os.path.isdir(name + "\\png16-linear"):
+			os.mkdir(name + "\\png16-linear")
+		if os.path.isfile(name + "\\png16-linear\\" + name + "_000001.png"):
+			print("   exists..")
+		else:
+			idx = 0
+			pct = -1
+			pnglist = sorted([x for x in os.listdir(name + "\\png16-raw") if x.lower().endswith('.png') and not os.path.isdir(x)])
+			listlen = len(pnglist)
+			for pngidx in range(listlen):
+				pngfile = pnglist[pngidx]
+				idx += 1
+				newpct = round(idx * 100 / listlen)
+				if newpct != pct:
+					pct = newpct
+					sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+				# print(str(pct)+"%")
+				img = cv2.imread(name + "\\png16-raw\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
+				#print()
+				#print(" src = "+str(img[0][0]))
 
-			#print(" mintemp: "+ str( np.min(img)))
-			#print(" maxtemp: "+ str( np.max(img)))
-			#print(" minCtemp: "+ str( imgCmin))
-			#print(" maxCtemp: "+ str( imgCmax))
+				# to float kelvin values
+				img=raw_to_kelvin(img)
 
-			# Rescale to 16 bit full range
-			img = 65535.0 * (img - imgCmin) / (imgCmax - imgCmin)
-			cv2.imwrite(name + "\\png16-celsius\\" + pngfile, img.astype(np.uint16))
-			#exit()
-		print()
+				# to float celsius values
+				# img=raw_to_celcius(img)
+				#print(" celcius = "+str(img[0][0]))
 
-	print("  png8... .  .   .")
-	if os.path.isfile(name + "\\png8\\" + name + "_000001.png"):
-		print("   exists..")
-	else:
-		idx = 0
-		pct = -1
-		for pngidx in range(listlen):
-			pngfile = pnglist[pngidx]
-			idx += 1
-			newpct = round(idx * 100 / listlen)
-			if newpct != pct:
-				pct = newpct
-				sys.stdout.write("\r[" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
-			# print(str(pct)+"%")
-			img = cv2.imread(name + "\\png16-celsius\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
-			# Rescale to 8 bit
-			# img = 255.0 * (img - float(imgCmin)) / (float(imgCmax) - float(imgCmin))
-			img = img * (255.0/65535.0)
-			# Apply colourmap - try COLORMAP_JET if INFERNO doesn't work.
-			# https://docs.opencv.org/3.4/d3/d50/group__imgproc__colormap.html#ga9a805d8262bcbe273f16be9ea2055a65
-			if idx==1:
-				for colormap in colormaps:
-					img_col = cv2.applyColorMap(img.astype(np.uint8), colormap)
-					cv2.imwrite(str(Colormaps(colormap).name) +".png", img_col)
-			img_col = cv2.applyColorMap(img.astype(np.uint8), targetcolormap)
-			# img_col = img
-			cv2.imwrite(name + "\\png8\\" + pngfile, img_col)
-		print()
+				# to float fahrenheit values
+				# img=raw_to_fahrenheit(img)
 
-	print("  mp4... .  .   .")
-	if os.path.isfile(name + ".mp4"):
-		print("   exists..")
-	else:
-		(
-			ffmpeg.input(name + "\\png8\\" + name + "_%06d.png", f='image2')
-			.output(
-				name + ".mp4",
-				vcodec="libx265",
-				vf="scale=iw*2:ih*2",
-				crf=10,
+				#print(" mintemp: "+ str( np.min(img)))
+				#print(" maxtemp: "+ str( np.max(img)))
+				#print(" minCtemp: "+ str( imgCmin))
+				#print(" maxCtemp: "+ str( imgCmax))
+
+				imgKmin = raw_to_kelvin(imgmin)
+				imgKmax = raw_to_kelvin(imgmax)
+
+				# Rescale to 16 bit full range
+				img = 65535.0 * (img - imgKmin) / (imgKmax - imgKmin)
+				cv2.imwrite(name + "\\png16-linear\\" + pngfile, img.astype(np.uint16))
+				#exit()
+			print()
+
+	if create_png_16bit_celcius:
+		print("  png16-celcius... .  .   .")
+		if not os.path.isdir(name + "\\png16-celcius"):
+			os.mkdir(name + "\\png16-celcius")
+		if os.path.isfile(name + "\\png16-celcius\\" + name + "_000001.png"):
+			print("   exists..")
+		else:
+			idx = 0
+			pct = -1
+			pnglist = sorted([x for x in os.listdir(name + "\\png16-raw") if x.lower().endswith('.png') and not os.path.isdir(x)])
+			listlen = len(pnglist)
+			for pngidx in range(listlen):
+				pngfile = pnglist[pngidx]
+				idx += 1
+				newpct = round(idx * 100 / listlen)
+				if newpct != pct:
+					pct = newpct
+					sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+				# print(str(pct)+"%")
+				img = cv2.imread(name + "\\png16-raw\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
+				#print()
+				#print(" src = "+str(img[0][0]))
+
+				# to float kelvin values
+				# img=raw_to_kelvin(img)
+
+				# to float celsius values
+				img=raw_to_celcius(img) # celcius
+				#print(" celcius = "+str(img[0][0]))
+
+				# to float fahrenheit values
+				# img=raw_to_fahrenheit(img)
+
+				#print(" mintemp: "+ str( np.min(img)))
+				#print(" maxtemp: "+ str( np.max(img)))
+				#print(" minCtemp: "+ str( imgCmin))
+				#print(" maxCtemp: "+ str( imgCmax))
+
+				# imgKmin = raw_to_kelvin(imgmin)
+				# imgKmax = raw_to_kelvin(imgmax)
+
+				# Rescale to 16 bit full range
+				# img = 65535.0 * (img - imgKmin) / (imgKmax - imgKmin)
+
+				img = img * 100.0
+				# can't save floats in images, so 100x means 12.34c -> 1234 (uint)
+				# this allows temperature range of 0c-655.35c in 16bit format
+
+				cv2.imwrite(name + "\\png16-celcius\\" + pngfile, img.astype(np.uint16))
+				#exit()
+			print()
+
+
+	if delete_png_16bit_raw:
+		shutil.rmtree(name + "\\png16-raw")
+
+	if create_png_8bit:
+		print("  png8... .  .   .")
+		if not os.path.isdir(name + "\\png8"):
+			os.mkdir(name + "\\png8")
+		if os.path.isfile(name + "\\png8\\" + name + "_000001.png"):
+			print("   exists..")
+		else:
+			pnglist = sorted([x for x in os.listdir(name + "\\png16-linear") if x.lower().endswith('.png') and not os.path.isdir(x)])
+			listlen = len(pnglist)
+			idx = 0
+			pct = -1
+			for pngidx in range(listlen):
+				pngfile = pnglist[pngidx]
+				idx += 1
+				newpct = round(idx * 100 / listlen)
+				if newpct != pct:
+					pct = newpct
+					sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+				# print(str(pct)+"%")
+				img = cv2.imread(name + "\\png16-linear\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
+				# Rescale to 8 bit
+				# img = 255.0 * (img - float(imgCmin)) / (float(imgCmax) - float(imgCmin))
+				img = img * (255.0/65535.0)
+				# Apply colourmap - try COLORMAP_JET if INFERNO doesn't work.
+				# https://docs.opencv.org/3.4/d3/d50/group__imgproc__colormap.html#ga9a805d8262bcbe273f16be9ea2055a65
+				if idx==1 and create_colormap_examples:
+					for colormap in colormaps:
+						img_col = cv2.applyColorMap(img.astype(np.uint8), colormap)
+						cv2.imwrite(name + "\\" + str(Colormaps(colormap).name) + ".png", img_col)
+				img_col = cv2.applyColorMap(img.astype(np.uint8), targetcolormap)
+				# img_col = img
+				cv2.imwrite(name + "\\png8\\" + pngfile, img_col)
+			print()
+
+	if create_mp4:
+		print("  mp4... .  .   .")
+		if os.path.isfile(name + ".mp4"):
+			print("   exists..")
+		else:
+			ffmpeg = (
+				FFmpeg().input(name + "\\png8\\" + name + "_%06d.png", f='image2')
+				.output(
+					name + ".mp4",
+					vcodec="libx265",
+					vf="scale=iw*2:ih*2", # 2x upscale because of chroma subsampling
+					crf=10,
+				)
 			)
-			.run()
-		)
+			@ffmpeg.on("progress")
+			def ffmpeg_progress(progress: Progress):
+				pct = round(progress.frame * 100 / listlen)
+				sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+				# print(progress)
+			ffmpeg.execute()
 
-	gradientImg = gradientbox(500, 1000, 0, 65535.0)
-	cv2.imwrite(name + "\\gradient_16bit.png", (gradientImg).astype(np.uint16))
-	gradientImg = gradientImg / 65535.0 * 255.0
-	gradientImg = cv2.applyColorMap(gradientImg.astype(np.uint8), targetcolormap)
-	cv2.imwrite(name + "\\gradient_8bit_colormap.png", gradientImg.astype(np.uint8))
+	if delete_png_8bit:
+		shutil.rmtree(name + "\\png8")
+
+	if create_gradientbox:
+		gradientImg = gradientbox(500, 1000, 0, 65535.0)
+		cv2.imwrite(name + "\\gradient_16bit.png", (gradientImg).astype(np.uint16))
+		gradientImg = gradientImg / 65535.0 * 255.0
+		gradientImg = cv2.applyColorMap(gradientImg.astype(np.uint8), targetcolormap)
+		cv2.imwrite(name + "\\gradient_8bit_colormap.png", gradientImg.astype(np.uint8))
 

@@ -32,150 +32,28 @@ csq splits based on: "46 46 46 00 52 54 50"
 '''
 
 
-
+# note, exif only extracted from first frame with assumption values do not change during recording.. modify code if they do
 exifdata = None # exif will be here later
+PlanckR1 = None
+PlanckR2 = None
+PlanckB = None
+PlanckO = None
+PlanckF = None
 
-def kelvin(vals):
-	""" A property method that returns the thermogram's temperature in
-	kelvin (K).
-	
-	Returns
-	-------
-	Array[np.float64, ..., ...]
-		A 2D array of numpy float values in kelvin. Order is [H, W].
-	"""
+def raw_to_kelvin(val):
+	return PlanckB / np.log( (PlanckR1 / PlanckR2) * (1. / (val + PlanckO) ) + PlanckF)
 
-	# this bit ported from flir.php
-	'''
-	
-    $tmp=explode(" ",$exif[0]['ReflectedApparentTemperature']);
-    $Temp_ref = $tmp[0];
-    
-    $Emissivity=$exif[0]['Emissivity'];
-	
-	// save Flir values for Plancks Law for better reading in short variables
-	$R1=$exif[0]['PlanckR1'];
-	$R2=$exif[0]['PlanckR2'];
-	$B= $exif[0]['PlanckB'];
-	$O= $exif[0]['PlanckO'];
-	$F= $exif[0]['PlanckF'];
+def raw_to_celcius(val):
+	return raw_to_kelvin(val) - 273.15
 
-	print('Plancks values: '.$R1.' '.$R2.' '.$B.' '.$O.' '.$F."\n\n");
+def raw_to_fahrenheit(val):
+	return raw_to_celcius(val) * 1.8 + 32.00
 
-	// get displayed temp range in RAW values
-	$RAWmax=$exif[0]['RawValueMedian']+$exif[0]['RawValueRange']/2;
-	$RAWmin=$RAWmax-$exif[0]['RawValueRange'];
-
-	print('RAW Temp Range from sensor : '.exec($convert.' raw.png -format "%[min] %[max]" info:')."\n");
-	printf("RAW Temp Range FLIR setting: %d %d\n",$RAWmin,$RAWmax);
-
-	//overwrite with settings
-	if (isset($options['rmin'])) $RAWmin=$options['rmin'];
-	if (isset($options['rmax'])) $RAWmax=$options['rmax'];
-
-	printf("RAW Temp Range select      : %d %d\n",$RAWmin,$RAWmax);
-
-	// calc amount of radiance of reflected objects ( Emissivity < 1 )
-	$RAWrefl=$R1/($R2*(exp($B/($Temp_ref+273.15))-$F))-$O;
-	printf("RAW reflected: %d\n",$RAWrefl); 
-
-	// get displayed object temp max/min and convert to "%.1f" for printing
-	$RAWmaxobj=($RAWmax-(1-$Emissivity)*$RAWrefl)/$Emissivity;
-	$RAWminobj=($RAWmin-(1-$Emissivity)*$RAWrefl)/$Emissivity;
-	$Temp_min=sprintf("%.1f", $B/log($R1/($R2*($RAWminobj+$O))+$F)-273.15);
-	$Temp_max=sprintf("%.1f", $B/log($R1/($R2*($RAWmaxobj+$O))+$F)-273.15);
-	
-	
-	----
-	// convert every RAW-16-Bit Pixel with Planck's Law to a Temperature Grayscale value and append temp scale
-	$Smax=$B/log($R1/($R2*($RAWmax+$O))+$F);
-	$Smin=$B/log($R1/($R2*($RAWmin+$O))+$F);
-	$Sdelta=$Smax-$Smin;
-	exec($convert." raw.png -fx \"($B/ln($R1/($R2*(65535*u+$O))+$F)-$Smin)/$Sdelta\" ir.png");
-	'''
-
-	#print(exifdata)
-	#Temp_ref = exifdata['ReflectedApparentTemperature'].split(' ')[0]
-
-	#Emissivity = exifdata['Emissivity']
-
-	PlanckR1=exifdata['PlanckR1']
-	PlanckR2=exifdata['PlanckR2']
-	PlanckB= exifdata['PlanckB']
-	PlanckO= exifdata['PlanckO']
-	PlanckF= exifdata['PlanckF']
-
-	#print('Plancks values: '+str(PlanckR1)+' '+str(PlanckR2)+' '+str(PlanckB)+' '+str(PlanckO)+' '+str(PlanckF))
-	'''
-	# get displayed temp range in RAW values
-	RawValueMedian=exifdata['RawValueMedian']
-	RawValueRange=exifdata['RawValueRange']
-
-	RAWmax=RawValueMedian+RawValueRange/2.0
-	RAWmin=RAWmax-RawValueRange
-
-	print("RAW Temp Range FLIR setting: "+str(RAWmin)+" - "+str(RAWmax))
-
-	# calc amount of radiance of reflected objects ( Emissivity < 1 )
-	#RAWrefl=PlanckR1/(PlanckR2*(exp(PlanckB/(Temp_ref+273.15))-PlanckF))-PlanckO
-	#printf("RAW reflected: "+RAWrefl)
-
-	# convert every RAW-16-Bit Pixel with Planck's Law to a Temperature Grayscale value and append temp scale
-	Smax=PlanckB/np.log(PlanckR1/(PlanckR2*(RAWmax+PlanckO))+PlanckF)
-	Smin=PlanckB/np.log(PlanckR1/(PlanckR2*(RAWmin+PlanckO))+PlanckF)
-	Sdelta=Smax-Smin
-
-	#print(vals[0])
-
-	# ( PlanckB / ln( PlanckR1 / ( PlanckR2 * ( 65535 * u + PlanckO ) ) + PlanckF ) - Smin ) / Sdelta
-	# vals=[
-	# 	(( PlanckB / np.log( PlanckR1 / ( PlanckR2 * ( 65535 * u + PlanckO ) ) + PlanckF ) - Smin ) / Sdelta)
-	# 	for u
-	# 	in vals
-	# ]
-	for i in range(len(vals)):
-		# vals[i]=(( PlanckB / np.log( PlanckR1 / ( PlanckR2 * ( 65535 * vals[i] + PlanckO ) ) + PlanckF ) - Smin ) / Sdelta)
-		vals[i]=(( PlanckB / np.log( PlanckR1 / ( PlanckR2 * ( 65535.0 * vals[i] + PlanckO ) ) + PlanckF ) - Smin ) / Sdelta)
-	'''
-	for i in range(len(vals)):
-		vals[i]=PlanckB / np.log((PlanckR1 / PlanckR2)*(1. / (vals[i] + PlanckO)) + PlanckF)
-
-	return vals
-
-def celsius(vals):
-	""" A property method that returns the thermogram's temperature in
-	degrees celsius (°C).
-	
-	Returns
-	-------
-	Array[np.float64, ..., ...]
-		A 2D array of numpy float values in celsius. Order is [H, W].
-	"""
-	vals = kelvin(vals)
-	#print(" postkelvin = " + str(vals[0]))
-
-	for i in range(len(vals)):
-		vals[i]=vals[i] - 273.15
-	#print(" postcelcius = " + str(vals[0]))
-	return vals
-
-def fahrenheit(vals):
-	""" A property method that returns the thermogram's temperature in
-	degrees fahrenheit (°F).
-	
-	Returns
-	-------
-	Array[np.float64, ..., ...]
-		A 2D array of numpy float values in fahrenheit. Order is [H, W].
-	"""
-
-	vals = celsius(vals)
-	#print(" postcelsius = " + str(vals[0]))
-
-	for i in range(len(vals)):
-		vals[i]=vals[i] * 1.8 + 32.00
-	#print(" postfahrenheit = " + str(vals[0]))
-	return vals
+def gradientbox(width,height,minval,maxval):
+	img=np.zeros((height,width, 1), np.uint16)
+	for y in range(height):
+		cv2.line(img, (0, y) ,(width, y), float(height-y)/float(height)*(maxval-minval)+minval )
+	return img
 
 class Colormaps(IntEnum):
 	COLORMAP_AUTUMN = 0
@@ -224,6 +102,8 @@ colormaps = [
 	cv2.COLORMAP_TURBO,
 ]
 
+targetcolormap = cv2.COLORMAP_TURBO
+
 filelist = sorted([x for x in os.listdir(".") if x.lower().endswith('.csq') and not os.path.isdir(x)])
 for file in filelist:
 	name = file[0:file.rfind('.')]
@@ -236,8 +116,8 @@ for file in filelist:
 		os.mkdir(name + "\\jpgls")
 	if not os.path.isdir(name + "\\png16"):
 		os.mkdir(name + "\\png16")
-	if not os.path.isdir(name + "\\png16-calibrated"):
-		os.mkdir(name + "\\png16-calibrated")
+	if not os.path.isdir(name + "\\png16-celsius"):
+		os.mkdir(name + "\\png16-celsius")
 	if not os.path.isdir(name + "\\png8"):
 		os.mkdir(name + "\\png8")
 	
@@ -254,6 +134,12 @@ for file in filelist:
 		print("   exists..")
 		with open(name + "\\exif.json", 'r') as handle:
 			exifdata = json.load(handle)
+
+			PlanckR1 = exifdata['PlanckR1']
+			PlanckR2 = exifdata['PlanckR2']
+			PlanckB = exifdata['PlanckB']
+			PlanckO = exifdata['PlanckO']
+			PlanckF = exifdata['PlanckF']
 	else:
 		with exiftool.ExifTool() as et:
 			# et.run()
@@ -293,6 +179,12 @@ for file in filelist:
 			with open(name + "\\exif.json", 'w') as handle: # saving just for fun
 				json.dump(exifdata, handle, indent=4, sort_keys=True)
 
+			PlanckR1 = exifdata['PlanckR1']
+			PlanckR2 = exifdata['PlanckR2']
+			PlanckB = exifdata['PlanckB']
+			PlanckO = exifdata['PlanckO']
+			PlanckF = exifdata['PlanckF']
+
 			ett = et.execute(
 				"-b",
 				"-RawThermalImage",
@@ -321,9 +213,9 @@ for file in filelist:
 	idx = 0
 	pct = -1
 	listlen = len(pnglist)
-	if os.path.isfile(name + "\\minmax.pickle"):
-		with open(name + "\\minmax.pickle", 'rb') as handle:
-			[imgmin, imgmax] = pickle.load(handle)
+	if os.path.isfile(name + "\\minmax.json"):
+		with open(name + "\\minmax.json", 'r') as handle:
+			[imgmin, imgmax] = json.load(handle)
 	else:
 		print("   finding min/max...")
 		for pngidx in range(listlen):
@@ -343,42 +235,16 @@ for file in filelist:
 				imgmax = np.max([imgmax, np.max(img)])
 		print()
 
-		with open(name + "\\minmax.pickle", 'wb') as handle:
-			pickle.dump([imgmin, imgmax], handle)
-	with open(name + "\\minmax.json", 'w') as handle:
-		json.dump([float(imgmin), float(imgmax)], handle)
+		with open(name + "\\minmax.json", 'w') as handle:
+			json.dump([float(imgmin), float(imgmax)], handle)
 
 	print("min "+ str(imgmin)+" - max "+str(imgmax))
+	imgCmin = raw_to_celcius(imgmin)
+	imgCmax = raw_to_celcius(imgmax)
+	print("minC "+ str(imgCmin)+" - maxC "+str(imgCmax))
 
-	# print("  png8... .  .   .")
-	# if os.path.isfile(name + "\\png8\\" + name + "_000001.png"):
-	# 	print("   exists..")
-	# else:
-	# 	idx = 0
-	# 	pct = -1
-	# 	for pngidx in range(listlen):
-	# 		pngfile = pnglist[pngidx]
-	# 		idx += 1
-	# 		newpct = round(idx * 100 / listlen)
-	# 		if newpct != pct:
-	# 			pct = newpct
-	# 			sys.stdout.write("\r[" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
-	# 		# print(str(pct)+"%")
-	# 		img = cv2.imread(name + "\\png16\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
-	# 		# Rescale to 8 bit
-	# 		img = 255 * (img - imgmin) / (imgmax - imgmin)
-	# 		# Apply colourmap - try COLORMAP_JET if INFERNO doesn't work.
-	# 		# https://docs.opencv.org/3.4/d3/d50/group__imgproc__colormap.html#ga9a805d8262bcbe273f16be9ea2055a65
-	# 		if idx==1:
-	# 			for colormap in colormaps:
-	# 				img_col = cv2.applyColorMap(img.astype(np.uint8), colormap)
-	# 				cv2.imwrite(str(Colormaps(colormap).name) +".png", img_col)
-	# 		img_col = cv2.applyColorMap(img.astype(np.uint8), cv2.COLORMAP_MAGMA)
-	# 		cv2.imwrite(name + "\\png8\\" + pngfile, img_col)
-	# 	print()
-
-	print("  png16-calibrated... .  .   .")
-	if os.path.isfile(name + "\\png16-calibrated\\" + name + "_000001.png"):
+	print("  png16-celsius... .  .   .")
+	if os.path.isfile(name + "\\png16-celsius\\" + name + "_000001.png"):
 		print("   exists..")
 	else:
 		idx = 0
@@ -392,26 +258,51 @@ for file in filelist:
 				sys.stdout.write("\r[" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
 			# print(str(pct)+"%")
 			img = cv2.imread(name + "\\png16\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
-			print()
-			print(" src = "+str(img[0][0]))
-			celsius(img.flat)
-			print(" out = "+str(img[0][0]))
+			#print()
+			#print(" src = "+str(img[0][0]))
 
-			print(" mintemp: "+ str( np.min(img)))
-			print(" maxtemp: "+ str( np.max(img)))
-			print()
-			print(img.shape)
-			exit()
+			# to float celsius values
+			img=raw_to_celcius(img)
+			#print(" celcius = "+str(img[0][0]))
+
+			#print(" mintemp: "+ str( np.min(img)))
+			#print(" maxtemp: "+ str( np.max(img)))
+			#print(" minCtemp: "+ str( imgCmin))
+			#print(" maxCtemp: "+ str( imgCmax))
+
+			# Rescale to 16 bit full range
+			img = 65535.0 * (img - imgCmin) / (imgCmax - imgCmin)
+			cv2.imwrite(name + "\\png16-celsius\\" + pngfile, img.astype(np.uint16))
+			#exit()
+		print()
+
+	print("  png8... .  .   .")
+	if os.path.isfile(name + "\\png8\\" + name + "_000001.png"):
+		print("   exists..")
+	else:
+		idx = 0
+		pct = -1
+		for pngidx in range(listlen):
+			pngfile = pnglist[pngidx]
+			idx += 1
+			newpct = round(idx * 100 / listlen)
+			if newpct != pct:
+				pct = newpct
+				sys.stdout.write("\r[" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
+			# print(str(pct)+"%")
+			img = cv2.imread(name + "\\png16-celsius\\" + pngfile, cv2.IMREAD_UNCHANGED).astype(np.float32)
 			# Rescale to 8 bit
-			img = 65535.0 * (img - imgmin) / (imgmax - imgmin)
+			# img = 255.0 * (img - float(imgCmin)) / (float(imgCmax) - float(imgCmin))
+			img = img * (255.0/65535.0)
 			# Apply colourmap - try COLORMAP_JET if INFERNO doesn't work.
 			# https://docs.opencv.org/3.4/d3/d50/group__imgproc__colormap.html#ga9a805d8262bcbe273f16be9ea2055a65
 			if idx==1:
 				for colormap in colormaps:
 					img_col = cv2.applyColorMap(img.astype(np.uint8), colormap)
 					cv2.imwrite(str(Colormaps(colormap).name) +".png", img_col)
-			img_col = cv2.applyColorMap(img.astype(np.uint8), cv2.COLORMAP_MAGMA)
-			cv2.imwrite(name + "\\png16-calibrated\\" + pngfile, img_col)
+			img_col = cv2.applyColorMap(img.astype(np.uint8), targetcolormap)
+			# img_col = img
+			cv2.imwrite(name + "\\png8\\" + pngfile, img_col)
 		print()
 
 	print("  mp4... .  .   .")
@@ -423,7 +314,15 @@ for file in filelist:
 			.output(
 				name + ".mp4",
 				vcodec="libx265",
+				vf="scale=iw*2:ih*2",
 				crf=10,
 			)
 			.run()
 		)
+
+	gradientImg = gradientbox(500, 1000, 0, 65535.0)
+	cv2.imwrite(name + "\\gradient_16bit.png", (gradientImg).astype(np.uint16))
+	gradientImg = gradientImg / 65535.0 * 255.0
+	gradientImg = cv2.applyColorMap(gradientImg.astype(np.uint8), targetcolormap)
+	cv2.imwrite(name + "\\gradient_8bit_colormap.png", gradientImg.astype(np.uint8))
+

@@ -243,13 +243,19 @@ for file in filelist:
 	
 	imgmin = None
 	imgmax = None
+	imgCmin = None
+	imgCmax = None
 	idx = 0
 	pct = -1
 	print("  finding min/max... .  .   .")
 	if os.path.isfile(name + "\\minmax.json"):
 		print("   exists..")
 		with open(name + "\\minmax.json", 'r') as handle:
-			[imgmin, imgmax] = json.load(handle)
+			minmaxobj=json.load(handle)
+			imgmin = minmaxobj['min']
+			imgmax = minmaxobj['max']
+			imgCmin = raw_to_celcius(imgmin)
+			imgCmax = raw_to_celcius(imgmax)
 	else:
 		pnglist = sorted([x for x in os.listdir(name + "\\png16-raw") if x.lower().endswith('.png') and not os.path.isdir(x)])
 		listlen = len(pnglist)
@@ -268,16 +274,21 @@ for file in filelist:
 			else:
 				imgmin = np.min([imgmin, np.min(img)])
 				imgmax = np.max([imgmax, np.max(img)])
+
+		imgCmin = raw_to_celcius(imgmin)
+		imgCmax = raw_to_celcius(imgmax)
 		print()
 
 		with open(name + "\\minmax.json", 'w') as handle:
-			json.dump([float(imgmin), float(imgmax)], handle)
+			minmaxobj=dict()
+			minmaxobj['min']=float(imgmin)
+			minmaxobj['max']=float(imgmax)
+			minmaxobj['minCelsius']=imgCmin
+			minmaxobj['maxCelsius']=imgCmax
+			json.dump(minmaxobj, handle, indent=4, sort_keys=False)
 
 	print("    min "+ str(imgmin)+" - max "+str(imgmax))
-	imgCmin = raw_to_celcius(imgmin)
-	imgCmax = raw_to_celcius(imgmax)
 	print("    Celcius min "+ str(imgCmin)+" - max "+str(imgCmax))
-
 
 	if create_png_16bit_linear:
 		print("  png16-linear... .  .   .")

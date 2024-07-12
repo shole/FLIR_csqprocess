@@ -27,9 +27,6 @@ delete_png_8bit=True
 
 #####
 
-create_png_8bit = create_png_8bit or create_mp4 # required by mp4
-create_png_16bit_linear=create_png_16bit_linear or create_png_8bit # required by 8bit
-
 colormaps = [
 	cv2.COLORMAP_AUTUMN,
 	cv2.COLORMAP_BONE,
@@ -130,7 +127,12 @@ for file in filelist:
 	
 	if not os.path.isdir(name):
 		os.mkdir(name)
-	
+
+	_create_png_8bit = create_png_8bit or ( create_mp4 and not os.path.isfile(name + ".mp4") and ( not os.path.isfile(name + "\\png8\\" + name + "_000001.png") ) )  # required by mp4
+	_create_png_16bit_linear = create_png_16bit_linear or ( _create_png_8bit and ( not os.path.isfile(name + "\\png8\\" + name + "_000001.png") ) )  # required by 8bit
+	# print("_create_png_8bit " + str(_create_png_8bit))
+	# print("_create_png_16bit_linear " + str(_create_png_16bit_linear))
+
 	print(" " + file + "... .  .   .")
 	print("  fff... .  .   .")
 	if not os.path.isdir(name + "\\fff"):
@@ -291,7 +293,7 @@ for file in filelist:
 	print("    min "+ str(imgmin)+" - max "+str(imgmax))
 	print("    Celcius min "+ str(imgCmin)+" - max "+str(imgCmax))
 
-	if create_png_16bit_linear:
+	if _create_png_16bit_linear:
 		print("  png16-linear... .  .   .")
 		if not os.path.isdir(name + "\\png16-linear"):
 			os.mkdir(name + "\\png16-linear")
@@ -394,7 +396,7 @@ for file in filelist:
 	if delete_png_16bit_raw:
 		shutil.rmtree(name + "\\png16-raw")
 
-	if create_png_8bit:
+	if _create_png_8bit:
 		print("  png8... .  .   .")
 		if not os.path.isdir(name + "\\png8"):
 			os.mkdir(name + "\\png8")
@@ -456,7 +458,7 @@ for file in filelist:
 			ffmpeg.execute()
 			print()
 
-	if delete_png_8bit:
+	if delete_png_8bit and os.path.isdir(name + "\\png8"):
 		shutil.rmtree(name + "\\png8")
 
 	if create_gradientbox:

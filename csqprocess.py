@@ -220,7 +220,8 @@ for file in filelist:
 		print("   exists..")
 	else:
 		ffmpeg = (
-			FFmpeg().input(
+			FFmpeg()
+			.input(
 				name + "\\jpgls\\" + name + "_%06d.jpgls",
 				f='image2',
 				# loglevel="quiet",
@@ -428,12 +429,18 @@ for file in filelist:
 			print()
 
 	if create_mp4:
+		fps=exifdata['FrameRate']
 		print("  mp4... .  .   .")
 		if os.path.isfile(name + ".mp4"):
 			print("   exists..")
 		else:
 			ffmpeg = (
-				FFmpeg().input(name + "\\png8\\" + name + "_%06d.png", f='image2')
+				FFmpeg()
+				.input(
+					name + "\\png8\\" + name + "_%06d.png",
+					f='image2',
+					framerate=fps,
+				)
 				.output(
 					name + ".mp4",
 					vcodec="libx265",
@@ -447,6 +454,7 @@ for file in filelist:
 				sys.stdout.write("\r   [" + ("#" * pct) + (" " * (100 - pct)) + "] " + str(pct) + "%")
 				# print(progress)
 			ffmpeg.execute()
+			print()
 
 	if delete_png_8bit:
 		shutil.rmtree(name + "\\png8")

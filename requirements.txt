@@ -1,0 +1,7 @@
+csplitb==1.0.2
+ffmpeg-python==0.2.0
+numpy==1.21.5
+opencv-contrib-python==4.6.0.66
+opencv-python==4.5.5.62
+PyExifTool==0.5.5
+python-ffmpeg==2.0.12
